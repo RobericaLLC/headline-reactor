@@ -503,27 +503,102 @@ def etfs_cmd(out: str = typer.Option(str(CAT / "etf_catalog.parquet"))):
     typer.echo(f"[OK] Wrote {out} ({len(rows)} ETFs).")
 
 @app.command()
-def all_cmd(skip_orats: bool = typer.Option(False, help="Skip ORATS coverage check (faster)")):
+def all_cmd(common: str = typer.Option("US_COMMON_PRIMARY"),
+            etf: str = typer.Option("US_ETF_PRIMARY"),
+            adr: str = typer.Option("US_ADR_PRIMARY"),
+            screen_type: str = typer.Option("PRIVATE"),
+            skip_orats: bool = typer.Option(False, help="Skip ORATS coverage check (faster)")):
     """Run end-to-end: BEQS -> Refdata -> Stats -> ETF map (optionally ORATS)."""
     typer.echo("=" * 70)
     typer.echo("US UNIVERSE PIPELINE - FULL BUILD")
     typer.echo("=" * 70)
     
+    # Step 1: BEQS
     typer.echo("\n[1/5] Fetching BEQS universes...")
-    beqs()
+    typer.echo(f"  Common stocks: {common}")
+    typer.echo(f"  ETFs: {etf}")
+    typer.echo(f"  ADRs: {adr}")
     
+    secs = []
+    try:
+        typer.echo(f"\nPulling {common}...")
+        secs += beqs_list(common, screen_type)
+        typer.echo(f"  Found {len(secs)} securities")
+    except Exception as e:
+        typer.echo(f"  [WARN] Could not fetch {common}: {e}")
+    
+    try:
+        typer.echo(f"\nPulling {etf}...")
+        etfs_list = beqs_list(etf, screen_type)
+        secs += etfs_list
+        typer.echo(f"  Found {len(etfs_list)} ETFs")
+    except Exception as e:
+        typer.echo(f"  [WARN] Could not fetch {etf}: {e}")
+    
+    try:
+        typer.echo(f"\nPulling {adr}...")
+        adrs_list = beqs_list(adr, screen_type)
+        secs += adrs_list
+        typer.echo(f"  Found {len(adrs_list)} ADRs")
+    except Exception as e:
+        typer.echo(f"  [WARN] Could not fetch {adr}: {e}")
+    
+    if not secs:
+        typer.echo("\n[ERROR] No securities retrieved. Check screen names exist in Terminal.")
+        raise typer.Exit(1)
+    
+    beqs_path = CAT / "beqs_securities.parquet"
+    pd.DataFrame({"bbg": list(dict.fromkeys(secs))}).to_parquet(beqs_path, index=False)
+    typer.echo(f"\n[OK] Wrote {beqs_path} ({len(set(secs)):,} unique securities).")
+    
+    # Step 2: Refdata
     typer.echo("\n[2/5] Enriching with Bloomberg refdata...")
-    refdata_enrich()
+    b = pd.read_parquet(beqs_path)
+    rdf = refdata(b["bbg"].tolist(), REF_FIELDS)
+    if rdf.empty:
+        typer.echo("No refdata rows returned; check entitlements."); raise typer.Exit(1)
+    norm = normalize_ref(rdf)
+    universe_path = CAT / "us_universe.parquet"
+    norm.to_parquet(universe_path, index=False)
+    typer.echo(f"[OK] Wrote {universe_path} ({len(norm):,} rows).")
+    typer.echo(f"     Common stocks: {norm['is_common'].sum()}")
+    typer.echo(f"     ETFs: {norm['is_etf'].sum()}")
+    typer.echo(f"     ADRs: {norm['is_adr'].sum()}")
     
+    # Step 3: Stats
     typer.echo("\n[3/5] Computing liquidity stats...")
-    stats_cmd()
+    sm = pd.read_parquet(universe_path)
+    st = adv_spread(sm)
+    stats_path = CAT / "stats.parquet"
+    st.to_parquet(stats_path, index=False)
+    typer.echo(f"[OK] Wrote {stats_path} ({len(st):,} rows).")
     
+    # Step 4: ETFs
     typer.echo("\n[4/5] Creating ETF catalog...")
-    etfs_cmd()
+    rows=[]
+    sector = [("XLB","Basic Materials"),("XLE","Energy"),("XLF","Financials"),("XLI","Industrials"),
+              ("XLK","Information Technology"),("XLP","Consumer Staples"),("XLU","Utilities"),
+              ("XLV","Health Care"),("XLY","Consumer Discretionary"),("XLC","Communication Services"),
+              ("SMH","Semiconductors"),("SOXX","Semiconductors"),("XBI","Biotech"),("KBE","Banks"),("XOP","Oil & Gas")]
+    country = [("SPY","US"),("QQQ","US"),("IWM","US"),("EWJ","JP"),("EWG","DE"),("EWQ","FR"),
+               ("EWU","GB"),("EWP","ES"),("EWI","IT"),("EWL","CH"),("EWN","NL"),
+               ("EWA","AU"),("EWC","CA"),("EWZ","BR"),("EWT","TW"),("EWY","KR"),("EWH","HK"),
+               ("MCHI","CN"),("FXI","CN"),("EWW","MX"),("EZA","ZA"),("INDA","IN"),("EPI","IN")]
+    for e, sec in sector: rows.append({"etf":e,"type":"sector","sector":sec,"country":None})
+    for e, c  in country: rows.append({"etf":e,"type":"country","sector":None,"country":c})
+    etf_path = CAT / "etf_catalog.parquet"
+    pd.DataFrame(rows).to_parquet(etf_path, index=False)
+    typer.echo(f"[OK] Wrote {etf_path} ({len(rows)} ETFs).")
     
+    # Step 5: ORATS (optional)
     if not skip_orats:
         typer.echo("\n[5/5] Checking ORATS coverage...")
-        orats_cmd()
+        symbols = sm["symbol"].dropna().astype(str).unique().tolist()
+        df_orats = check_orats_coverage(symbols, max_workers=8)
+        orats_path = CAT / "orats_coverage.parquet"
+        df_orats.to_parquet(orats_path, index=False)
+        ok_count = df_orats['orats_ok'].sum()
+        typer.echo(f"[OK] Wrote {orats_path} ({len(df_orats):,} symbols checked, {ok_count:,} available on ORATS).")
     else:
         typer.echo("\n[5/5] Skipped ORATS coverage check")
     
