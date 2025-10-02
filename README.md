@@ -37,11 +37,36 @@ pip install -e .
 
 ## Usage
 
+### V2 System (Universe-Wide, No Whitelist)
+
+**Recommended:** Use V2 commands for full cross-asset coverage without whitelist gating.
+
+**Single headline:**
+```bash
+headline-reactor suggest-v2 "AIR FP AIRBUS WINS ORDER FROM EMIRATES"
+# Output: EADSY BUY $2000 IOC TTL=10m (US ADR)
+#         EWQ BUY $2000 IOC TTL=10m (country ETF: FR)
+```
+
+**Live watch:**
+```bash
+headline-reactor watch-v2
+# Watches Bloomberg Alert Catcher in universe-wide mode
+```
+
+**Supports:**
+- Any symbology: `AAPL US`, `NVDA.O`, `005930 KS`, `2330 TT`, `AIR FP`, `NESN SW`
+- Foreign stocks → ADR or ETF proxies automatically
+- Futures for macro (CLX4, GCZ4, 6EZ4, 6JZ4)
+- Crypto proxies (BITO, ETHE)
+
+### V1 System (Whitelist-Based)
+
 **Single headline (copy/paste):**
 
 ```bash
 headline-reactor suggest "SPAIN UPGRADED TO A BY FITCH"
-# EWP BUY $1500 IOC TTL=30m (NEWS: ratings_up_spain)
+# EWP BUY $1500 IOC TTL=30m (NEWS: country_ratings_up)
 ```
 
 **Live watch (local OCR):**
