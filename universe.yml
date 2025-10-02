@@ -1,0 +1,74 @@
+# universe.yml — asset-class budgets, proxies, futures fronts (edit daily if needed)
+budgets:
+  equity_usd: 1500
+  options_premium_usd: 400
+  futures_usd: 2000
+  fx_usd: 2000
+  crypto_usd: 1500
+
+defaults:
+  ttl_sec: 600          # 10m time stop
+  equity_offset_px: 0.03
+  tif: IOC
+  whitelist: [SPY, QQQ, IWM, EWP, EWY, EWG, EWJ, EWH, SMH, SOXX, AAPL, MSFT, META, NVDA, EA, BITO, ETHE]
+
+proxies:
+  # Country ETFs
+  EXCH_TO_ETF:
+    KS: EWY
+    KQ: EWY
+    JP: EWJ
+    T: EWJ
+    HK: EWH
+    DE: EWG
+    GR: EWG
+    FR: EWQ
+    FP: EWQ
+    ES: EWP
+    SM: EWP
+    GB: EWU
+    LN: EWU
+    TW: EWT
+    CN: MCHI
+    SS: MCHI
+    SZ: MCHI
+
+  # Sector ETFs (sympathy)
+  SECTOR_TO_ETF:
+    SEMIS: SMH
+    BANKS: KBE
+    OILGAS: XOP
+    SOFTWARE: IGV
+    COMM_SERVICES: XLC
+
+  # Company → Sector (for sympathy)
+  COMPANY_TO_SECTOR:
+    SAMSUNG: SEMIS
+    "SK HYNIX": SEMIS
+    TSMC: SEMIS
+    NVIDIA: SEMIS
+    AMD: SEMIS
+
+futures:
+  # set front contracts you actually want to trade today
+  fronts:
+    ES: ESZ4      # E-mini S&P
+    NQ: NQZ4
+    CL: CLX4      # WTI Crude
+    GC: GCZ4      # Gold
+    ZN: ZNZ4      # 10Y Note
+    6E: 6EZ4      # EUR/USD
+    6J: 6JZ4      # JPY/USD
+
+fx:
+  # ETF fallbacks if you prefer ETFs over CME FX
+  currency_to_etf:
+    USD: UUP
+    EUR: FXE
+    JPY: FXY
+
+crypto:
+  spot_to_proxy:
+    BTCUSD: BITO
+    ETHUSD: ETHE
+

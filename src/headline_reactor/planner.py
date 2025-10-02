@@ -4,6 +4,13 @@ from typing import Optional, List
 import yaml, pandas as pd
 from pathlib import Path
 
+try:
+    from .instrument_selector import select_candidates, Context
+    from .symbology import load_universe
+    UNIVERSE_AVAILABLE = True
+except ImportError:
+    UNIVERSE_AVAILABLE = False
+
 @dataclass
 class Plan:
     line: str
@@ -81,6 +88,26 @@ def plans_from_headline(label: str, headline: str, primary: Optional[str], cfg: 
         if p.line not in dedup or p.confidence > dedup[p.line].confidence:
             dedup[p.line] = p
     return sorted(dedup.values(), key=lambda p: p.confidence, reverse=True)
+
+def plans_universe(label: str, headline: str, row_text: str, cfg: dict, universe_path: Path, wl: set[str]) -> List[Plan]:
+    """Universe-aware planner: selects best instruments across all asset classes."""
+    if not UNIVERSE_AVAILABLE:
+        # Fallback to simple planner if universe modules not available
+        return plans_from_headline(label, headline, row_text, cfg, wl)
+    
+    uni = load_universe(universe_path)
+    ctx = Context(label=label, headline=headline, row_text=row_text, wl=wl, uni=uni)
+    cands = select_candidates(ctx)
+    out: List[Plan] = []
+    for c in cands:
+        out.append(Plan(
+            line=c.instrument,  # already fully formatted
+            reason=c.rationale, 
+            label=label, 
+            symbol=None, 
+            confidence=c.score
+        ))
+    return out if out else [Plan("NO ACTION (macro_ambiguous)", "No tradeable instruments found", label, None, 0.0)]
 
 # Legacy function for backwards compatibility
 def plan_from_label(label: str, ticker: Optional[str], cfg: dict) -> Plan:
