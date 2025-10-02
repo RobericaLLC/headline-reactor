@@ -48,80 +48,99 @@ def _send(s: blpapi.Session, service: blpapi.Service, req: blpapi.Request) -> Li
     return out
 
 # ---------- BEQS (Bloomberg Equity Screening) ----------
-def beqs_list(screen_name: str, screen_type: str = "PRIVATE") -> List[str]:
+def beqs_list(screen_name: str, screen_type: str = "PRIVATE", max_results: int = 25000) -> List[str]:
     """
-    Fetch securities from a saved BEQS screen. Returns list like ['AAPL US Equity', ...].
-    Based on Bloomberg API docs: Service //blp/refdata, Request type BeqsRequest.
+    Fetch securities from a saved BEQS screen with pagination. Returns list like ['AAPL US Equity', ...].
+    Bloomberg BEQS has a 3,000 result limit per request - we need to paginate using overrides.
     """
     _require_blp()
     s = _session()
     try:
         ref = _open(s, "//blp/refdata")
-        req = ref.createRequest("BeqsRequest")
+        all_secs: List[str] = []
+        offset = 0
+        page_size = 3000
         
-        # Set required screenName element
-        req.getElement("screenName").setValue(screen_name)
-        
-        # Set optional screenType element (GLOBAL or PRIVATE)
-        req.getElement("screenType").setValue(screen_type)
-        
-        # Send request and collect response
-        msgs = _send(s, ref, req)
-        
-        secs: List[str] = []
-        for m in msgs:
-            # Debug: print message structure
-            typer.echo(f"    Message type: {m.messageType()}")
-            typer.echo(f"    Message toString: {str(m)[:200]}...")
+        while offset < max_results:
+            req = ref.createRequest("BeqsRequest")
             
-            # BEQS response structure varies but typically contains:
-            # - data element with nested structure
-            # - or direct securityData array
+            # Set required screenName element
+            req.getElement("screenName").setValue(screen_name)
             
-            # Try data -> securityData -> security
-            if m.hasElement("data"):
-                data = m.getElement("data")
-                typer.echo(f"    Found 'data' element with {data.numElements()} elements")
+            # Set optional screenType element (GLOBAL or PRIVATE)
+            req.getElement("screenType").setValue(screen_type)
+            
+            # Add pagination overrides (START_POSITION and MAX_RESULTS)
+            if offset > 0:
+                ovr = req.getElement("overrides")
+                o1 = ovr.appendElement()
+                o1.setElement("fieldId", "START_POSITION")
+                o1.setElement("value", str(offset))
+            
+            # Send request and collect response
+            msgs = _send(s, ref, req)
+            
+            page_secs: List[str] = []
+            for m in msgs:
+                # Check for errors first
+                if m.hasElement("responseError"):
+                    err = m.getElement("responseError")
+                    err_msg = err.getElementAsString("message") if err.hasElement("message") else "Unknown error"
+                    typer.echo(f"    [ERROR] {err_msg}")
+                    return all_secs  # Return what we have so far
                 
-                # Check for securityData at data level
-                if data.hasElement("securityData"):
-                    sd = data.getElement("securityData")
-                    typer.echo(f"    Found securityData with {sd.numValues()} values")
+                # Try data -> securityData -> security
+                if m.hasElement("data"):
+                    data = m.getElement("data")
+                    
+                    # Check for securityData at data level
+                    if data.hasElement("securityData"):
+                        sd = data.getElement("securityData")
+                        for i in range(sd.numValues()):
+                            sec_elem = sd.getValueAsElement(i)
+                            
+                            # Each element should have a 'security' field
+                            if sec_elem.hasElement("security"):
+                                sec = sec_elem.getElementAsString("security")
+                                if sec:
+                                    # Normalize to "TICKER EXCH Equity" format
+                                    if not sec.endswith("Equity") and not sec.endswith("Index"):
+                                        sec = sec + " Equity"
+                                    page_secs.append(sec)
+                
+                # Direct securityData at message level
+                if m.hasElement("securityData"):
+                    sd = m.getElement("securityData")
                     for i in range(sd.numValues()):
                         sec_elem = sd.getValueAsElement(i)
-                        
-                        # Each element should have a 'security' field
                         if sec_elem.hasElement("security"):
                             sec = sec_elem.getElementAsString("security")
                             if sec:
-                                # Normalize to "TICKER EXCH Equity" format
+                                # Normalize format
                                 if not sec.endswith("Equity") and not sec.endswith("Index"):
                                     sec = sec + " Equity"
-                                secs.append(sec)
+                                page_secs.append(sec)
             
-            # Direct securityData at message level
-            if m.hasElement("securityData"):
-                sd = m.getElement("securityData")
-                typer.echo(f"    Found message-level securityData with {sd.numValues()} values")
-                for i in range(sd.numValues()):
-                    sec_elem = sd.getValueAsElement(i)
-                    if sec_elem.hasElement("security"):
-                        sec = sec_elem.getElementAsString("security")
-                        if sec:
-                            # Normalize format
-                            if not sec.endswith("Equity") and not sec.endswith("Index"):
-                                sec = sec + " Equity"
-                            secs.append(sec)
+            if not page_secs:
+                typer.echo(f"    Page {offset//page_size + 1}: No more results")
+                break
+            
+            all_secs.extend(page_secs)
+            typer.echo(f"    Page {offset//page_size + 1}: Retrieved {len(page_secs)} securities (total: {len(all_secs)})")
+            
+            # If we got less than page_size, we're done
+            if len(page_secs) < page_size:
+                break
+            
+            offset += page_size
         
         # Dedup keeping order
         out, seen = [], set()
-        for x in secs:
+        for x in all_secs:
             if x not in seen:
                 seen.add(x); out.append(x)
         
-        if not out:
-            typer.echo(f"    [DEBUG] No securities extracted. Check if screen '{screen_name}' exists and has results.")
-        
+        typer.echo(f"    Total unique: {len(out)} securities from '{screen_name}'")
         return out
     finally:
         s.stop()
