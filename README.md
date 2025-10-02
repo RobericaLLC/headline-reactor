@@ -33,6 +33,7 @@ pip install -e .
 
 * `newsreactor.yml` – playbooks, offsets, notional, TTL, whitelist.
 * `data/name_map.csv` – extend NAME→TICKER.
+* `.env` – environment variables (API keys, LLM settings). Copy from `.env.example` and customize.
 
 ## Usage
 
@@ -51,15 +52,24 @@ headline-reactor watch
 
 **Enable LLM assist (off by default):**
 
+Create a `.env` file in the project root (copy from `.env.example`):
+
 ```bash
-# Windows (PowerShell)
-$env:OPENAI_API_KEY = "sk-..."
-$env:LLM_ENABLED = "1"
+OPENAI_API_KEY=sk-your-actual-key
+LLM_ENABLED=1
+LLM_MODEL=gpt-5-fast
+```
+
+Then use the `--llm` flag:
+
+```bash
 headline-reactor suggest --llm "ELECTRONIC ARTS NEAR ROUGHLY $50B DEAL"
 
 # Or use the launcher script
 .\scripts\start_watch.ps1
 ```
+
+The `.env` file is automatically loaded when you run any `headline-reactor` command.
 
 > Uses the **OpenAI Responses API** under the hood via the official Python SDK (`client.responses.create(...)`). See [OpenAI Python SDK](https://github.com/openai/openai-python) for details.
 
