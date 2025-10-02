@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 from pathlib import Path
+from io import StringIO
 import pandas as pd
 import requests
 import typer
@@ -20,7 +21,7 @@ def _csv_get(path: str, params: dict) -> pd.DataFrame:
     p["token"] = _token()
     r = requests.get(f"{BASE}/{path}", params=p, timeout=30)
     r.raise_for_status()
-    return pd.read_csv(pd.compat.StringIO(r.text))
+    return pd.read_csv(StringIO(r.text))
 
 @app.command()
 def summaries(ticker: str, out: str = typer.Option(None, help="Optional CSV/Parquet to write")):
