@@ -13,8 +13,12 @@ dependencies = [
   "pandas>=2.2",
   "pyyaml>=6.0",
   "rapidfuzz>=3.9",
-  "openai>=1.40.0",        # Responses API (official Python SDK)
+  "openai>=1.40.0",        # Chat Completions API (official Python SDK)
   "python-dotenv>=1.0.0",  # Load .env files
+  "pyarrow>=14.0",         # For parquet support
+  "requests>=2.31",        # For ORATS API
+  "tqdm>=4.65",            # Progress bars
+  "python-dateutil>=2.8",  # Date utilities
 ]
 
 [project.optional-dependencies]
