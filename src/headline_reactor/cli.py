@@ -9,6 +9,13 @@ from .rules import classify, map_ticker
 from .planner import load_cfg, plans_from_headline, plans_universe
 from .llm import suggest_with_llm
 
+# V2 imports
+try:
+    from .planner_v2 import plans_universe_v2
+    V2_AVAILABLE = True
+except ImportError:
+    V2_AVAILABLE = False
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -105,5 +112,75 @@ def watch(config: str = typer.Option("newsreactor.yml"),
             typer.echo("")
             
             time.sleep(poll_ms/1000)
+    except KeyboardInterrupt:
+        pass
+
+@app.command()
+def suggest_v2(headline: str,
+               config: str = typer.Option("universe_v2.yml"),
+               llm: bool = typer.Option(False)):
+    """V2: Universe-wide analysis without whitelist gating (catalog-driven)."""
+    if not V2_AVAILABLE:
+        typer.echo("V2 system not available. Install required dependencies.")
+        raise typer.Exit(1)
+    
+    h = headline.upper()
+    label = classify(h) or "macro_ambiguous"
+    plans = plans_universe_v2(label, h, h, config)
+    
+    if not plans:
+        typer.echo("NO ACTION (no tradeable instruments found)")
+    
+    for p in plans:
+        typer.echo(p.line)
+
+@app.command()
+def watch_v2(config: str = typer.Option("universe_v2.yml"),
+             window_title: str = typer.Option("Alert Catcher"),
+             poll_ms: int = typer.Option(250),
+             roi_top: int = typer.Option(115),
+             roi_height: int = typer.Option(20),
+             llm: bool = typer.Option(False)):
+    """V2: Watch mode with universe-wide coverage (no whitelist gating)."""
+    if not V2_AVAILABLE:
+        typer.echo("V2 system not available. Install required dependencies.")
+        raise typer.Exit(1)
+    
+    rect = find_news_window_rect(window_title)
+    if not rect:
+        typer.echo(f"Could not find '{window_title}' window; make it visible.")
+        raise typer.Exit(1)
+    
+    seen = set()
+    typer.echo(f"Watching '{window_title}' (V2 universe-wide mode)... Ctrl+C to exit.")
+    typer.echo("")
+    
+    try:
+        while True:
+            img = grab_topline(rect, roi_top, roi_height)
+            row_text = ocr_topline(img)
+            if not row_text:
+                time.sleep(poll_ms / 1000)
+                continue
+            
+            row_text = row_text.upper()
+            h = hashlib.sha256(row_text.encode()).hexdigest()[:12]
+            if h in seen:
+                time.sleep(poll_ms / 1000)
+                continue
+            seen.add(h)
+            
+            label = classify(row_text) or "macro_ambiguous"
+            plans = plans_universe_v2(label, row_text, row_text, config)
+            
+            typer.echo(f"[NEWS] {row_text}")
+            if not plans:
+                typer.echo(" -> NO ACTION (no tradeable instruments)")
+            else:
+                for p in plans:
+                    typer.echo(f" -> {p.line}")
+            typer.echo("")
+            
+            time.sleep(poll_ms / 1000)
     except KeyboardInterrupt:
         pass

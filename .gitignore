@@ -38,7 +38,9 @@ env/
 
 # Data
 data/live/
-*.parquet
+
+# Catalog files (add real catalogs manually)
+# catalog/*.parquet are stub files for testing
 
 # Logs
 *.log

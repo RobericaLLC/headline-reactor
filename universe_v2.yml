@@ -1,0 +1,86 @@
+# universe_v2.yml — universe-wide guardrails + proxy preferences
+
+budgets:
+  equity_usd: 2000
+  options_premium_usd: 500
+  futures_usd: 2500
+  fx_usd: 2000
+  crypto_usd: 1500
+
+order_defaults:
+  ttl_sec: 600             # time stop (10m)
+  tif: IOC
+  equity_offset_bps: 8     # marketable-limit band vs NBBO
+  futures_offset_ticks: 2
+  options_offset_bps: 50
+  max_slippage_bps: 40
+
+guardrails:
+  min_adv_usd: 5000000         # min average daily $ volume to trade single-name cash
+  max_spread_bps: 40           # skip illiquid names intraday
+  max_quote_age_ms: 1500       # must have <1.5s-fresh quote
+  allow_prepost_us: true
+  allow_foreign_local: false   # when US is closed, prefer ADR/ETFs over local lines
+
+sessions:
+  us_rth:
+    start: "09:30"
+    end:   "16:00"
+    tz: "America/New_York"
+
+catalog_paths:
+  secmaster: "catalog/secmaster.parquet"     # columns: symbol, exchange, mic, country, sector, name, adr_us, adr_ratio, isin, ric, bbg
+  etf_catalog: "catalog/etf_catalog.parquet" # columns: etf, type[country|sector|broad], country?, sector?
+  stats: "catalog/stats.parquet"             # columns: symbol, adv_usd, avg_spread_bps
+  rolls: "catalog/futures_roll.yml"          # per-root roll rules (FND/LTD offsets)
+  options_roots: "catalog/options_roots.parquet"  # OCC roots if needed
+
+proxy_priority: [SINGLE_NAME, ADR, SECTOR_ETF, COUNTRY_ETF, INDEX_FUT, FX, CRYPTO]
+
+macro_router:
+  OIL:
+    future: CL
+    note: "WTI crude"
+  NATGAS:
+    future: NG
+    note: "Henry Hub"
+  GOLD:
+    future: GC
+    note: "Gold"
+  COPPER:
+    future: HG
+    note: "Copper"
+  YIELD:
+    future: ZN
+    note: "10Y UST"
+  DOLLAR:
+    future: DX
+    fx: "6E-"
+    note: "DXY up ~ EUR down"
+  EURO:
+    fx: 6E
+    note: "EUR/USD"
+  YEN:
+    fx: 6J
+    note: "JPY/USD"
+  BITCOIN:
+    crypto: BTCUSD
+    proxy_etf: BITO
+  ETHEREUM:
+    crypto: ETHUSD
+    proxy_etf: ETHE
+
+futures_fronts:   # optional hard pins (auto-roll uses catalog/rolls if missing)
+  ES: ESZ4
+  NQ: NQZ4
+  CL: CLX4
+  GC: GCZ4
+  ZN: ZNZ4
+  6E: 6EZ4
+  6J: 6JZ4
+
+crypto:
+  spot_to_proxy:
+    BTCUSD: BITO
+    ETHUSD: ETHE
+
