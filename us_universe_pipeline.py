@@ -51,46 +51,77 @@ def _send(s: blpapi.Session, service: blpapi.Service, req: blpapi.Request) -> Li
 def beqs_list(screen_name: str, screen_type: str = "PRIVATE") -> List[str]:
     """
     Fetch securities from a saved BEQS screen. Returns list like ['AAPL US Equity', ...].
+    Based on Bloomberg API docs: Service //blp/refdata, Request type BeqsRequest.
     """
     _require_blp()
     s = _session()
     try:
         ref = _open(s, "//blp/refdata")
         req = ref.createRequest("BeqsRequest")
-        # Required params:
-        req.set("screenName", screen_name)
-        req.set("screenType", screen_type)  # 'PRIVATE' or 'GLOBAL'
-        # Ask API to return Bloomberg Security strings
-        # (Field list optional; we only need security identifiers here)
+        
+        # Set required screenName element
+        req.getElement("screenName").setValue(screen_name)
+        
+        # Set optional screenType element (GLOBAL or PRIVATE)
+        req.getElement("screenType").setValue(screen_type)
+        
+        # Send request and collect response
         msgs = _send(s, ref, req)
-
+        
         secs: List[str] = []
         for m in msgs:
-            # Typical structure: data -> results[] -> security
+            # Debug: print message structure
+            typer.echo(f"    Message type: {m.messageType()}")
+            typer.echo(f"    Message toString: {str(m)[:200]}...")
+            
+            # BEQS response structure varies but typically contains:
+            # - data element with nested structure
+            # - or direct securityData array
+            
+            # Try data -> securityData -> security
             if m.hasElement("data"):
                 data = m.getElement("data")
-                if data.hasElement("results"):
-                    res = data.getElement("results")
-                    for i in range(res.numValues()):
-                        el = res.getValueAsElement(i)
-                        if el.hasElement("security"):
-                            sec = el.getElementAsString("security")
-                            if sec and "Equity" in sec:
+                typer.echo(f"    Found 'data' element with {data.numElements()} elements")
+                
+                # Check for securityData at data level
+                if data.hasElement("securityData"):
+                    sd = data.getElement("securityData")
+                    typer.echo(f"    Found securityData with {sd.numValues()} values")
+                    for i in range(sd.numValues()):
+                        sec_elem = sd.getValueAsElement(i)
+                        
+                        # Each element should have a 'security' field
+                        if sec_elem.hasElement("security"):
+                            sec = sec_elem.getElementAsString("security")
+                            if sec:
+                                # Normalize to "TICKER EXCH Equity" format
+                                if not sec.endswith("Equity") and not sec.endswith("Index"):
+                                    sec = sec + " Equity"
                                 secs.append(sec)
-            # Fallback variant some builds return 'securityData'
+            
+            # Direct securityData at message level
             if m.hasElement("securityData"):
                 sd = m.getElement("securityData")
+                typer.echo(f"    Found message-level securityData with {sd.numValues()} values")
                 for i in range(sd.numValues()):
-                    el = sd.getValueAsElement(i)
-                    if el.hasElement("security"):
-                        sec = el.getElementAsString("security")
-                        if sec and "Equity" in sec:
+                    sec_elem = sd.getValueAsElement(i)
+                    if sec_elem.hasElement("security"):
+                        sec = sec_elem.getElementAsString("security")
+                        if sec:
+                            # Normalize format
+                            if not sec.endswith("Equity") and not sec.endswith("Index"):
+                                sec = sec + " Equity"
                             secs.append(sec)
-        # Dedup keep order
+        
+        # Dedup keeping order
         out, seen = [], set()
         for x in secs:
             if x not in seen:
                 seen.add(x); out.append(x)
+        
+        if not out:
+            typer.echo(f"    [DEBUG] No securities extracted. Check if screen '{screen_name}' exists and has results.")
+        
         return out
     finally:
         s.stop()
@@ -194,12 +225,12 @@ def normalize_ref(df: pd.DataFrame) -> pd.DataFrame:
     out["sector"]   = out.get("GICS_SECTOR_NAME").fillna(out.get("INDUSTRY_SECTOR"))
     out["isin"]     = out.get("ID_ISIN")
     out["ric"]      = out.get("ID_RIC")
-    # tags
-    st = (out.get("SECURITY_TYP") or "").astype(str).str.upper()
-    st2= (out.get("SECURITY_TYP2") or "").astype(str).str.upper()
-    adrflag = (out.get("ADR_FLAG")==True)
+    # tags - handle Series properly
+    st = out["SECURITY_TYP"].fillna("").astype(str).str.upper() if "SECURITY_TYP" in out.columns else pd.Series([""] * len(out))
+    st2 = out["SECURITY_TYP2"].fillna("").astype(str).str.upper() if "SECURITY_TYP2" in out.columns else pd.Series([""] * len(out))
+    adrflag = (out["ADR_FLAG"]==True) if "ADR_FLAG" in out.columns else pd.Series([False] * len(out))
     out["is_adr"]   = adrflag.fillna(False)
-    out["is_etf"]   = st.eq("ETF") | st2.str.contains("ETF|ETP", regex=True, na=False)
+    out["is_etf"]   = st.eq("ETF") | st.str.contains("ETF", na=False) | st2.str.contains("ETF|ETP", regex=True, na=False)
     out["is_common"]= (~out["is_etf"]) & (~out["is_adr"])
     keep = ["symbol","exchange","mic","country","sector","name","isin","ric","bbg","is_common","is_etf","is_adr"]
     out = out[keep].drop_duplicates(subset=["bbg"]).reset_index(drop=True)
@@ -367,12 +398,12 @@ def normalize_ref(df: pd.DataFrame) -> pd.DataFrame:
     out["sector"]   = out.get("GICS_SECTOR_NAME").fillna(out.get("INDUSTRY_SECTOR"))
     out["isin"]     = out.get("ID_ISIN")
     out["ric"]      = out.get("ID_RIC")
-    # tags
-    st = (out.get("SECURITY_TYP") or "").astype(str).str.upper()
-    st2= (out.get("SECURITY_TYP2") or "").astype(str).str.upper()
-    adrflag = (out.get("ADR_FLAG")==True)
+    # tags - handle Series properly
+    st = out["SECURITY_TYP"].fillna("").astype(str).str.upper() if "SECURITY_TYP" in out.columns else pd.Series([""] * len(out))
+    st2 = out["SECURITY_TYP2"].fillna("").astype(str).str.upper() if "SECURITY_TYP2" in out.columns else pd.Series([""] * len(out))
+    adrflag = (out["ADR_FLAG"]==True) if "ADR_FLAG" in out.columns else pd.Series([False] * len(out))
     out["is_adr"]   = adrflag.fillna(False)
-    out["is_etf"]   = st.eq("ETF") | st2.str.contains("ETF|ETP", regex=True, na=False)
+    out["is_etf"]   = st.eq("ETF") | st.str.contains("ETF", na=False) | st2.str.contains("ETF|ETP", regex=True, na=False)
     out["is_common"]= (~out["is_etf"]) & (~out["is_adr"])
     keep = ["symbol","exchange","mic","country","sector","name","isin","ric","bbg","is_common","is_etf","is_adr"]
     out = out[keep].drop_duplicates(subset=["bbg"]).reset_index(drop=True)
@@ -565,10 +596,41 @@ def all_cmd(common: str = typer.Option("US_COMMON_PRIMARY"),
     typer.echo(f"     ETFs: {norm['is_etf'].sum()}")
     typer.echo(f"     ADRs: {norm['is_adr'].sum()}")
     
-    # Step 3: Stats
-    typer.echo("\n[3/5] Computing liquidity stats...")
+    # Step 3: Stats (use refdata since static market data not available)
+    typer.echo("\n[3/5] Computing liquidity stats via refdata...")
     sm = pd.read_parquet(universe_path)
-    st = adv_spread(sm)
+    typer.echo(f"    Fetching stats for {len(sm):,} securities...")
+    snap_fields = ["PX_LAST", "VOLUME_AVG_30D", "VOLUME_AVG_20D", "BID", "ASK", "CRNCY"]
+    snap_df = refdata(sm["bbg"].tolist(), snap_fields)
+    
+    # Merge and compute
+    tmp = sm[["bbg","symbol"]].merge(snap_df, on="bbg", how="left")
+    
+    # ADV USD
+    adv_usd = []
+    for _, r in tmp.iterrows():
+        v = r.get("VOLUME_AVG_30D") if pd.notna(r.get("VOLUME_AVG_30D")) else r.get("VOLUME_AVG_20D")
+        px = r.get("PX_LAST")
+        # Assuming USD for simplicity (FX conversion would add time)
+        if pd.notna(v) and pd.notna(px) and v > 0 and px > 0:
+            adv_usd.append(float(v) * float(px))
+        else:
+            adv_usd.append(None)
+    
+    # Spread bps
+    spreads = []
+    for _, r in tmp.iterrows():
+        bid, ask = r.get("BID"), r.get("ASK")
+        if pd.notna(bid) and pd.notna(ask) and bid > 0 and ask > 0:
+            mid = 0.5 * (bid + ask)
+            bps = (ask - bid) / mid * 10000.0
+            spreads.append(max(bps, 0.0))
+        else:
+            spreads.append(None)
+    
+    st = pd.DataFrame({"symbol": tmp["symbol"], "adv_usd": adv_usd, "avg_spread_bps": spreads})
+    st = st.groupby("symbol", as_index=False).agg({"adv_usd":"max","avg_spread_bps":"min"})
+    
     stats_path = CAT / "stats.parquet"
     st.to_parquet(stats_path, index=False)
     typer.echo(f"[OK] Wrote {stats_path} ({len(st):,} rows).")
