@@ -3,19 +3,25 @@ defaults:
   equity_offset_px: 0.03
   ttl_sec: 600          # 10 min time-stop target
   tif: IOC
-  whitelist: ["EWP", "EA", "SPY", "FEZ"]
+  whitelist: ["EWP","EA","SPY","FEZ","SMH","SOXX","EWY","AAPL","META"]
 
 playbooks:
-  ratings_up_spain:
-    symbol: EWP
+  country_ratings_up:
     action: BUY
     equity_offset_px: 0.02
     ttl_sec: 1800       # 30m
-  ratings_down_spain:
-    symbol: EWP
+  country_ratings_down:
     action: SELL
     equity_offset_px: 0.02
     ttl_sec: 1800
+  supplier_pop_korea_semi:
+    action: BUY
+    equity_offset_px: 0.03
+    ttl_sec: 600        # 10m
+  bigtech_pivot:
+    action: SELL
+    equity_offset_px: 0.03
+    ttl_sec: 600        # 10m
   ma_confirmed:
     action: BUY
     equity_offset_px: 0.02
@@ -26,4 +32,3 @@ playbooks:
     ttl_sec: 600
   macro_ambiguous:
     action: NO_ACTION
-
