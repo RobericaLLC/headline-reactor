@@ -1,0 +1,29 @@
+defaults:
+  notional_usd: 1500
+  equity_offset_px: 0.03
+  ttl_sec: 600          # 10 min time-stop target
+  tif: IOC
+  whitelist: ["EWP", "EA", "SPY", "FEZ"]
+
+playbooks:
+  ratings_up_spain:
+    symbol: EWP
+    action: BUY
+    equity_offset_px: 0.02
+    ttl_sec: 1800       # 30m
+  ratings_down_spain:
+    symbol: EWP
+    action: SELL
+    equity_offset_px: 0.02
+    ttl_sec: 1800
+  ma_confirmed:
+    action: BUY
+    equity_offset_px: 0.02
+    ttl_sec: 600
+  ma_rumor:
+    action: BUY
+    equity_offset_px: 0.03
+    ttl_sec: 600
+  macro_ambiguous:
+    action: NO_ACTION
+
