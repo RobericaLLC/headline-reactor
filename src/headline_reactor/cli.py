@@ -2,11 +2,15 @@ from __future__ import annotations
 import time, hashlib, sys
 from pathlib import Path
 import typer
+from dotenv import load_dotenv
 from .capture import find_news_window_rect, grab_topline
 from .ocr import ocr_topline
 from .rules import classify, map_ticker
 from .planner import load_cfg, plan_from_label
 from .llm import suggest_with_llm
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = typer.Typer(add_completion=False)
 
