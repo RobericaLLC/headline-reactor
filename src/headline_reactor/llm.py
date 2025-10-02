@@ -20,20 +20,24 @@ SYS = (
 )
 
 def suggest_with_llm(headline: str, model: Optional[str] = None, temperature: float = 0.1) -> LLMResult:
-    """Uses OpenAI Responses API. Headline text only (no screenshots)."""
+    """Uses OpenAI Chat Completions API. Headline text only (no screenshots)."""
     if not int(os.getenv("LLM_ENABLED", "0")):
         return LLMResult(None, None, 0.0)
 
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    mdl = model or os.getenv("LLM_MODEL", "gpt-5-fast")
-    r = client.responses.create(
+    mdl = model or os.getenv("LLM_MODEL", "gpt-4o-mini")
+    
+    response = client.chat.completions.create(
         model=mdl,
-        instructions=SYS,
-        input=f"HEADLINE: {headline}",
-        response_format={"type":"json_object"},
+        messages=[
+            {"role": "system", "content": SYS},
+            {"role": "user", "content": f"HEADLINE: {headline}"}
+        ],
+        response_format={"type": "json_object"},
         temperature=temperature,
     )
-    data = json.loads(r.output_text)
+    
+    data = json.loads(response.choices[0].message.content)
     return LLMResult(
         action_line=data.get("action_line"),
         rationale=data.get("rationale"),

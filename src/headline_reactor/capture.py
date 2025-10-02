@@ -4,14 +4,14 @@ from PIL import Image, ImageGrab, ImageOps
 import pygetwindow as gw
 import win32gui  # type: ignore
 
-WINDOW_HINT = "News Alerts"
-ROI_TOP_PX = 40
-ROI_HEIGHT_PX = 28
+WINDOW_HINT = "Alert Catcher"
+ROI_TOP_PX = 115  # First alert row (below header)
+ROI_HEIGHT_PX = 20  # Height of one alert row
 
 def find_news_window_rect(title_part: str = WINDOW_HINT) -> Optional[Tuple[int,int,int,int]]:
     for w in gw.getAllWindows():
         t = (w.title or "").strip()
-        if title_part.lower() in t.lower() and w.isVisible:
+        if title_part.lower() in t.lower() and w.visible:
             try:
                 hwnd = w._hWnd
                 return win32gui.GetWindowRect(hwnd)  # (l,t,r,b)
